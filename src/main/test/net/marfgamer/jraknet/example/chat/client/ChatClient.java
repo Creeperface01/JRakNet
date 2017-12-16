@@ -37,7 +37,6 @@ import javax.swing.JFrame;
 import javax.swing.UIManager;
 
 import net.marfgamer.jraknet.RakNet;
-import net.marfgamer.jraknet.RakNetLogger;
 import net.marfgamer.jraknet.RakNetPacket;
 import net.marfgamer.jraknet.UtilityTest;
 import net.marfgamer.jraknet.client.RakNetClient;
@@ -88,7 +87,7 @@ public class ChatClient implements RakNetClientListener {
 		frame.updateListeners(this);
 		frame.setInstructions(CHAT_INSTRUCTIONS_DISCONNECTED);
 
-		this.client = new RakNetClient().setListener(this);
+		this.client = new RakNetClient().addListener(this);
 		this.channels = new ServerChannel[RakNet.MAX_CHANNELS];
 	}
 
@@ -368,9 +367,6 @@ public class ChatClient implements RakNetClientListener {
 			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 			ChatFrame frame = new ChatFrame();
 			frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-
-			// Enable logging
-			RakNet.enableLogging(RakNetLogger.LEVEL_INFO);
 
 			// Create client
 			@SuppressWarnings("unused")

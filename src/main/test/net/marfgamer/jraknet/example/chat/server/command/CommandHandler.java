@@ -30,11 +30,12 @@
  */
 package net.marfgamer.jraknet.example.chat.server.command;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.Arrays;
 import java.util.HashMap;
 
-import net.marfgamer.jraknet.RakNetLogger;
-import net.marfgamer.jraknet.example.chat.server.ChatServer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Used by the server to register and handle commands easily.
@@ -42,6 +43,8 @@ import net.marfgamer.jraknet.example.chat.server.ChatServer;
  * @author Trent "MarfGamer" Summerlin
  */
 public class CommandHandler {
+
+	private static final Logger log = LoggerFactory.getLogger(CommandHandler.class);
 
 	private HashMap<String, Command> commands;
 
@@ -72,8 +75,10 @@ public class CommandHandler {
 	 */
 	public void registerCommand(Class<? extends Command> commandClazz) {
 		try {
-			Command command = (Command) commandClazz.newInstance();
+			Command command = (Command) commandClazz.getDeclaredConstructor().newInstance();
 			this.registerCommand(command);
+		} catch (IllegalArgumentException | InvocationTargetException | NoSuchMethodException e) {
+			throw new IllegalArgumentException("Invalid Command constructor");
 		} catch (InstantiationException e) {
 			throw new IllegalArgumentException("Command must have a nullary constructor");
 		} catch (IllegalAccessException e) {
@@ -107,10 +112,10 @@ public class CommandHandler {
 		if (commands.containsKey(label)) {
 			Command command = commands.get(label);
 			if (command.handleCommand(arguments) == false) {
-				RakNetLogger.error(ChatServer.LOGGER_NAME, "Usage: " + command.getUsage());
+				log.error("Usage: " + command.getUsage());
 			}
 		} else {
-			RakNetLogger.error(ChatServer.LOGGER_NAME, "Unknown command!");
+			log.error("Unknown command!");
 		}
 	}
 

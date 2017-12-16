@@ -30,8 +30,10 @@
  */
 package net.marfgamer.jraknet.example.chat.server.command;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.marfgamer.jraknet.RakNet;
-import net.marfgamer.jraknet.RakNetLogger;
 import net.marfgamer.jraknet.example.chat.server.ChatServer;
 import net.marfgamer.jraknet.util.RakNetUtils;
 
@@ -41,6 +43,8 @@ import net.marfgamer.jraknet.util.RakNetUtils;
  * @author Trent "MarfGamer" Summerlin
  */
 public class ChannelCommand extends Command {
+
+	private static final Logger log = LoggerFactory.getLogger(ChannelCommand.class);
 
 	// Command data
 	private final ChatServer server;
@@ -65,16 +69,14 @@ public class ChannelCommand extends Command {
 					while (!server.hasChannel(channelId)) {
 						channelId++;
 						if (channelId >= RakNet.MAX_CHANNELS) {
-							RakNetLogger.error(ChatServer.LOGGER_NAME,
-									"Unable to add channel, either remove some or assign an ID manually!");
+							log.error("Unable to add channel, either remove some or assign an ID manually!");
 							return true;
 						}
 					}
 				} else {
 					// Channel was preset but there is no name!
 					if (args.length < 3) {
-						RakNetLogger.error(ChatServer.LOGGER_NAME,
-								"Failed to add channel with ID " + channelId + ", no name was provided!");
+						log.error("Failed to add channel with ID " + channelId + ", no name was provided!");
 						return true;
 					}
 				}
@@ -82,36 +84,34 @@ public class ChannelCommand extends Command {
 				// Add the channel and notify the server
 				String channelName = remainingArguments((hadId ? 2 : 1), args);
 				server.addChannel(channelId, channelName);
-				RakNetLogger.info(ChatServer.LOGGER_NAME, "Added channel \"" + channelName + "\" with ID " + channelId);
+				log.info("Added channel \"" + channelName + "\" with ID " + channelId);
 				return true;
 			} else if (args[0].equalsIgnoreCase("rename")) {
 				if (args.length >= 3) {
 					// Does the channel exist yet?
 					if (!server.hasChannel(channelId)) {
-						RakNetLogger.error(ChatServer.LOGGER_NAME,
-								"Channel with ID " + channelId + " has not yet been created!");
+						log.error("Channel with ID " + channelId + " has not yet been created!");
 						return true;
 					}
 
 					// Rename the channel and notify the server
 					String channelName = server.getChannelName(channelId);
 					server.renameChannel(channelId, remainingArguments(2, args));
-					RakNetLogger.info(ChatServer.LOGGER_NAME, "Renamed channel with ID " + channelId + " from \""
-							+ channelName + "\" to \"" + server.getChannelName(channelId) + "\"");
+					log.info("Renamed channel with ID " + channelId + " from \"" + channelName + "\" to \""
+							+ server.getChannelName(channelId) + "\"");
 					return true;
 				}
 			} else if (args[0].equalsIgnoreCase("remove")) {
 				// Does the channel exist yet?
 				if (!server.hasChannel(channelId)) {
-					RakNetLogger.error(ChatServer.LOGGER_NAME,
-							"Channel was ID " + channelId + " has not yet been created!");
+					log.error("Channel was ID " + channelId + " has not yet been created!");
 					return true;
 				}
 
 				// Remove the channel and notify the server
 				String channelName = server.getChannelName(channelId);
 				server.removeChannel(channelId);
-				RakNetLogger.info(ChatServer.LOGGER_NAME, "Removed channel \"" + channelName + "\"");
+				log.info("Removed channel \"" + channelName + "\"");
 				return true;
 			}
 		}

@@ -34,12 +34,9 @@ import javax.swing.JFrame;
 import javax.swing.UIManager;
 import javax.swing.UnsupportedLookAndFeelException;
 
-import net.marfgamer.jraknet.RakNet;
-import net.marfgamer.jraknet.RakNetLogger;
 import net.marfgamer.jraknet.UtilityTest;
-import net.marfgamer.jraknet.identifier.MCPEIdentifier;
+import net.marfgamer.jraknet.identifier.MinecraftIdentifier;
 import net.marfgamer.jraknet.server.RakNetServer;
-import net.marfgamer.jraknet.util.RakNetUtils;
 
 /**
  * Used to test the latency feature in <code>RakNetSession</code>.
@@ -48,28 +45,28 @@ import net.marfgamer.jraknet.util.RakNetUtils;
  */
 public class LatencyTest {
 
-	private static final MCPEIdentifier LATENCY_TEST_IDENTIFIER = new MCPEIdentifier("JRakNet Latency Test", 91,
-			"0.16.2", 0, 10, -1 /* We don't know the GUID yet */, "New World", "Developer");
+	private static final MinecraftIdentifier LATENCY_TEST_IDENTIFIER = new MinecraftIdentifier("A JRakNet latency test",
+			UtilityTest.MINECRAFT_PROTOCOL_NUMBER, UtilityTest.MINECRAFT_VERSION, 0, 10,
+			-1 /* We don't know the GUID yet */, "New World", "Developer");
 
 	private final RakNetServer server;
 	private final LatencyFrame frame;
 
 	public LatencyTest() {
-		this.server = new RakNetServer(UtilityTest.MINECRAFT_POCKET_EDITION_DEFAULT_PORT,
-				LATENCY_TEST_IDENTIFIER.getMaxPlayerCount());
+		this.server = new RakNetServer(UtilityTest.MINECRAFT_DEFAULT_PORT, LATENCY_TEST_IDENTIFIER.getMaxPlayerCount());
 		this.frame = new LatencyFrame();
 	}
 
 	/**
 	 * Starts the test.
+	 * 
+	 * @throws InterruptedException
+	 *             if the thread is interrupted while it is sleeping.
 	 */
-	public void start() {
-		// Enable logging
-		RakNet.enableLogging(RakNetLogger.LEVEL_INFO);
+	public void start() throws InterruptedException {
 
 		// Set server options and start it
 		LATENCY_TEST_IDENTIFIER.setServerGloballyUniqueId(server.getGloballyUniqueId());
-		server.setListenerSelf();
 		server.setIdentifier(LATENCY_TEST_IDENTIFIER);
 		server.startThreaded();
 
@@ -77,13 +74,13 @@ public class LatencyTest {
 		frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 		frame.setVisible(true);
 		while (true) {
+			Thread.sleep(500); // Lower CPU usage and give window time to update
 			frame.updatePaneText(server.getSessions());
-			RakNetUtils.threadLock(500);
 		}
 	}
 
 	public static void main(String[] args) throws ClassNotFoundException, InstantiationException,
-			IllegalAccessException, UnsupportedLookAndFeelException {
+			IllegalAccessException, UnsupportedLookAndFeelException, InterruptedException {
 		UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
 		LatencyTest test = new LatencyTest();
 		test.start();

@@ -33,7 +33,10 @@ package net.marfgamer.jraknet;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 
-import net.marfgamer.jraknet.identifier.MCPEIdentifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import net.marfgamer.jraknet.identifier.MinecraftIdentifier;
 import net.marfgamer.jraknet.protocol.MessageIdentifier;
 import net.marfgamer.jraknet.protocol.login.NewIncomingConnection;
 import net.marfgamer.jraknet.protocol.message.EncapsulatedPacket;
@@ -46,101 +49,97 @@ import net.marfgamer.jraknet.util.RakNetUtils;
 
 /**
  * Used to test <code>RakNetServer</code> by starting a server on the default
- * Minecraft: Pocket Edition port.
+ * Minecraft port.
  *
  * @author Trent "MarfGamer" Summerlin
  */
 public class RakNetServerTest {
 
-	// Logger name
-	private static final String LOGGER_NAME = "server test";
+	private static final Logger log = LoggerFactory.getLogger(RakNetServerTest.class);
 
 	public static void main(String[] args) {
-		// Enable logging
-		RakNet.enableLogging(RakNetLogger.LEVEL_INFO);
 
-		// Create server and set listener
-		RakNetServer server = new RakNetServer(UtilityTest.MINECRAFT_POCKET_EDITION_DEFAULT_PORT, 10);
-		server.setListener(new RakNetServerListener() {
+		// Create server and add listener
+		RakNetServer server = new RakNetServer(UtilityTest.MINECRAFT_DEFAULT_PORT, 10);
+		server.addListener(new RakNetServerListener() {
 
 			@Override
 			public void onClientPreConnect(InetSocketAddress address) {
-				RakNetLogger.info(LOGGER_NAME,
-						"Client from " + address + " has instantiated the connection, waiting for "
-								+ NewIncomingConnection.class.getSimpleName() + " packet");
+				log.info("Client from " + address + " has instantiated the connection, waiting for "
+						+ NewIncomingConnection.class.getSimpleName() + " packet");
 			}
 
 			@Override
 			public void onClientPreDisconnect(InetSocketAddress address, String reason) {
-				RakNetLogger.info(LOGGER_NAME,
-						"Client from " + address + " has failed to login for \"" + reason + "\"");
+				log.info("Client from " + address + " has failed to login for \"" + reason + "\"");
 			}
 
 			@Override
 			public void onClientConnect(RakNetClientSession session) {
-				RakNetLogger.info(LOGGER_NAME, session.getConnectionType().getName() + " client from address "
-						+ session.getAddress() + " has connected to the server");
+				log.info(session.getConnectionType().getName() + " client from address " + session.getAddress()
+						+ " has connected to the server");
 			}
 
 			@Override
 			public void onClientDisconnect(RakNetClientSession session, String reason) {
-				RakNetLogger.info(LOGGER_NAME, session.getConnectionType().getName() + " client from address "
-						+ session.getAddress() + " has been disconnected for \"" + reason + "\"");
+				log.info(session.getConnectionType().getName() + " client from address " + session.getAddress()
+						+ " has been disconnected for \"" + reason + "\"");
 			}
 
 			@Override
 			public void handleMessage(RakNetClientSession session, RakNetPacket packet, int channel) {
-				RakNetLogger.info(LOGGER_NAME,
-						"Received packet from " + session.getConnectionType().getName() + " client with address "
-								+ session.getAddress() + " with packet ID " + RakNetUtils.toHexStringId(packet)
-								+ " on channel " + channel);
+				log.info("Received packet from " + session.getConnectionType().getName() + " client with address "
+						+ session.getAddress() + " with packet ID " + RakNetUtils.toHexStringId(packet) + " on channel "
+						+ channel);
 			}
 
 			@Override
 			public void handlePing(ServerPing ping) {
-				MCPEIdentifier identifier = new MCPEIdentifier("A JRakNet server test", 91, "0.16.2",
-						server.getSessionCount(), server.getMaxConnections(), server.getGloballyUniqueId(), "New World",
-						"Survival");
+				MinecraftIdentifier identifier = new MinecraftIdentifier("A JRakNet server test",
+						UtilityTest.MINECRAFT_PROTOCOL_NUMBER, UtilityTest.MINECRAFT_VERSION, server.getSessionCount(),
+						server.getMaxConnections(), server.getGloballyUniqueId(), "New World", "Survival");
 				ping.setIdentifier(identifier);
 			}
 
 			@Override
 			public void onAcknowledge(RakNetClientSession session, Record record, EncapsulatedPacket packet) {
-				RakNetLogger.info(LOGGER_NAME,
-						session.getConnectionType().getName() + " client with address " + session.getAddress()
-								+ " has received packet with ID: "
-								+ MessageIdentifier.getName(packet.payload.readUnsignedByte()));
+				log.info(session.getConnectionType().getName() + " client with address " + session.getAddress()
+						+ " has received packet with ID: "
+						+ MessageIdentifier.getName(packet.payload.readUnsignedByte()));
 			}
 
 			@Override
 			public void onNotAcknowledge(RakNetClientSession session, Record record, EncapsulatedPacket packet) {
-				RakNetLogger.info(LOGGER_NAME,
-						session.getConnectionType().getName() + " client with address " + session.getAddress()
-								+ " has lost packet with ID: "
-								+ MessageIdentifier.getName(packet.payload.readUnsignedByte()));
+				log.info(session.getConnectionType().getName() + " client with address " + session.getAddress()
+						+ " has lost packet with ID: " + MessageIdentifier.getName(packet.payload.readUnsignedByte()));
 			}
 
 			@Override
 			public void onHandlerException(InetSocketAddress address, Throwable cause) {
-				RakNetLogger.error(LOGGER_NAME, "Exception caused by " + address);
+				log.error("Exception caused by " + address);
 				cause.printStackTrace();
 			}
 
 			@Override
 			public void onAddressBlocked(InetAddress address, String reason, long time) {
-				RakNetLogger.info(LOGGER_NAME,
+				log.info(
 						"Blocked address " + address + " due to \"" + reason + "\" for " + (time / 1000L) + " seconds");
 			}
 
 			@Override
 			public void onAddressUnblocked(InetAddress address) {
-				RakNetLogger.info(LOGGER_NAME, "Unblocked address " + address);
+				log.info("Unblocked address " + address);
 			}
 
 		});
 
 		// Start server
-		server.startThreaded();
+		try {
+			server.start();
+		} catch (RakNetException e) {
+			e.printStackTrace();
+			server.shutdown(e.getClass().getName() + ": " + e.getMessage());
+		}
 	}
 
 }

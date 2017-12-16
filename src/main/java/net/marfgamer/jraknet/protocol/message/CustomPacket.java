@@ -32,8 +32,10 @@ package net.marfgamer.jraknet.protocol.message;
 
 import java.util.ArrayList;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.marfgamer.jraknet.Packet;
-import net.marfgamer.jraknet.RakNetLogger;
 import net.marfgamer.jraknet.RakNetPacket;
 import net.marfgamer.jraknet.protocol.MessageIdentifier;
 import net.marfgamer.jraknet.protocol.message.acknowledge.Record;
@@ -41,10 +43,9 @@ import net.marfgamer.jraknet.session.RakNetSession;
 
 public class CustomPacket extends RakNetPacket implements Sizable {
 
-	public static final int SEQUENCE_NUMBER_LENGTH = 0x03;
+	private static final Logger log = LoggerFactory.getLogger(CustomPacket.class);
 
-	// Logger name
-	private static final String LOGGER_NAME = "custom packet";
+	public static final int SEQUENCE_NUMBER_LENGTH = 0x03;
 
 	// Custom packet data
 	public int sequenceNumber;
@@ -71,8 +72,8 @@ public class CustomPacket extends RakNetPacket implements Sizable {
 		this.writeTriadLE(sequenceNumber);
 		for (EncapsulatedPacket packet : messages) {
 			/*
-			 * We have to use wrap our buffer around a packet otherwise data
-			 * will be written incorrectly due to how Netty's ByteBufs work.
+			 * We have to use wrap our buffer around a packet otherwise data will be written
+			 * incorrectly due to how Netty's ByteBufs work.
 			 */
 			packet.buffer = new Packet(this.buffer());
 
@@ -94,7 +95,7 @@ public class CustomPacket extends RakNetPacket implements Sizable {
 			if (session != null) {
 				session.setAckReceiptPackets(ackMessages.toArray(new EncapsulatedPacket[ackMessages.size()]));
 			} else {
-				RakNetLogger.error(LOGGER_NAME, "No session specified for " + ackMessages.size()
+				log.error("No session specified for " + ackMessages.size()
 						+ " encapsulated packets that require ACK receipts");
 			}
 		}
@@ -108,8 +109,8 @@ public class CustomPacket extends RakNetPacket implements Sizable {
 			EncapsulatedPacket packet = new EncapsulatedPacket();
 
 			/*
-			 * We have to use wrap our buffer around a packet otherwise data
-			 * will be read incorrectly due to how Netty's ByteBufs work.
+			 * We have to use wrap our buffer around a packet otherwise data will be read
+			 * incorrectly due to how Netty's ByteBufs work.
 			 */
 			packet.buffer = new Packet(this.buffer());
 

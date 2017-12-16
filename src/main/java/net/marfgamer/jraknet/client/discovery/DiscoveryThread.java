@@ -30,11 +30,12 @@
  */
 package net.marfgamer.jraknet.client.discovery;
 
-import java.util.ArrayList;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
-import net.marfgamer.jraknet.RakNetLogger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.marfgamer.jraknet.client.RakNetClient;
-import net.marfgamer.jraknet.util.RakNetUtils;
 
 /**
  * This <code>Thread</code> is used by the <code>RakNetClient</code> to discover
@@ -45,18 +46,18 @@ import net.marfgamer.jraknet.util.RakNetUtils;
  */
 public class DiscoveryThread extends Thread {
 
-	// Logger name
-	private static final String LOGGER_NAME = "discovery thread";
+	private static final Logger log = LoggerFactory.getLogger(DiscoveryThread.class);
 
 	// Discovery data
-	private ArrayList<RakNetClient> clients;
+	private ConcurrentLinkedQueue<RakNetClient> clients;
 	private volatile boolean running;
 
 	/**
 	 * Constructs a <code>DiscoveryThread</code>.
 	 */
 	public DiscoveryThread() {
-		this.clients = new ArrayList<RakNetClient>();
+		this.clients = new ConcurrentLinkedQueue<RakNetClient>();
+		this.setName("DiscoveryThread");
 	}
 
 	/**
@@ -67,39 +68,37 @@ public class DiscoveryThread extends Thread {
 	}
 
 	/**
-	 * Adds a <code>RakNetClient</code> to the discovery system so it can
-	 * discover servers.
+	 * Adds a <code>RakNetClient</code> to the discovery system so it can discover
+	 * servers.
 	 * 
 	 * @param client
 	 *            the <code>RakNetClient</code> enabling its discovery system.
 	 */
 	public void addClient(RakNetClient client) {
 		if (clients.contains(client)) {
-			RakNetLogger.warn(LOGGER_NAME, "Client #" + client.getGloballyUniqueId()
+			log.warn("Client #" + client.getGloballyUniqueId()
 					+ " attempted to add itself to the discovery thread even though it is already in the thread.");
 			return;
 		}
 		clients.add(client);
-		RakNetLogger.debug(LOGGER_NAME, "Added client #" + client.getGloballyUniqueId() + " to the discovery thread");
+		log.debug("Added client #" + client.getGloballyUniqueId() + " to the discovery thread");
 	}
 
 	/**
-	 * Removes a <code>RakNetClient</code> from the discovery system, this
-	 * method is also called automatically by the client when it is garbage
-	 * collected.
+	 * Removes a <code>RakNetClient</code> from the discovery system, this method is
+	 * also called automatically by the client when it is garbage collected.
 	 * 
 	 * @param client
 	 *            the <code>RakNetClient</code> disabling its discovery system.
 	 */
 	public void removeClient(RakNetClient client) {
 		if (!clients.contains(client)) {
-			RakNetLogger.warn(LOGGER_NAME, "Client #" + client.getGloballyUniqueId()
+			log.warn("Client #" + client.getGloballyUniqueId()
 					+ " attempted to remove itself from the discovery thread even though it is not in the thread");
 			return;
 		}
 		clients.remove(client);
-		RakNetLogger.debug(LOGGER_NAME,
-				"Removed client #" + client.getGloballyUniqueId() + " from the discovery thread");
+		log.debug("Removed client #" + client.getGloballyUniqueId() + " from the discovery thread");
 	}
 
 	/**
@@ -114,24 +113,28 @@ public class DiscoveryThread extends Thread {
 	 */
 	public void shutdown() {
 		this.running = false;
-		RakNetLogger.info(LOGGER_NAME, "Shutdown discovery thread");
+		log.info("Shutdown discovery thread");
 	}
 
 	@Override
-	public synchronized void run() {
+	public void run() {
 		this.running = true;
-		RakNetLogger.info(LOGGER_NAME, "Started discovery thread");
+		log.info("Started discovery thread");
 		while (this.running) {
-			for (RakNetClient client : this.clients) {
-				client.updateDiscoveryData();
-			}
-			if (clients.size() > 0) {
-				RakNetLogger.debug(LOGGER_NAME,
+			try {
+				Thread.sleep(1000); // Lower CPU usage and prevent spamming
+				if (clients.size() <= 0) {
+					continue; // Do not loop through non-existent clients
+				}
+				for (RakNetClient client : this.clients) {
+					client.updateDiscoveryData();
+				}
+				log.debug(
 						"Sent discovery info out for " + clients.size() + " client" + (clients.size() == 1 ? "" : "s"));
-			} else {
-				RakNetLogger.warn(LOGGER_NAME, "Sent discovery info out for no clients");
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+				log.error("Discovery thread has crashed");
 			}
-			RakNetUtils.threadLock(1000L);
 		}
 	}
 

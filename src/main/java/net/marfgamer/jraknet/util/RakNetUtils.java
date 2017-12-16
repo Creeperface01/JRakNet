@@ -74,8 +74,8 @@ public class RakNetUtils {
 
 	/**
 	 * Sends a raw message to the specified address for the specified amount of
-	 * times in the specified interval until the packet is received or there is
-	 * a timeout.
+	 * times in the specified interval until the packet is received or there is a
+	 * timeout.
 	 * 
 	 * @param address
 	 *            the address to send the packet to.
@@ -98,8 +98,8 @@ public class RakNetUtils {
 			Bootstrap bootstrap = new Bootstrap();
 			BootstrapHandler handler = new BootstrapHandler();
 			bootstrap.group(group).channel(NioDatagramChannel.class).option(ChannelOption.SO_BROADCAST, true)
-					.option(ChannelOption.SO_RCVBUF, RakNet.MINIMUM_TRANSFER_UNIT)
-					.option(ChannelOption.SO_SNDBUF, RakNet.MINIMUM_TRANSFER_UNIT).handler(handler);
+					.option(ChannelOption.SO_RCVBUF, RakNet.MINIMUM_MTU_SIZE)
+					.option(ChannelOption.SO_SNDBUF, RakNet.MINIMUM_MTU_SIZE).handler(handler);
 
 			// Create channel, send packet, and close it
 			Channel channel = bootstrap.bind(0).sync().channel();
@@ -136,7 +136,7 @@ public class RakNetUtils {
 	public static boolean isServerOnline(InetSocketAddress address) {
 		// Create connection packet
 		OpenConnectionRequestOne connectionRequestOne = new OpenConnectionRequestOne();
-		connectionRequestOne.maximumTransferUnit = RakNet.MINIMUM_TRANSFER_UNIT;
+		connectionRequestOne.maximumTransferUnit = RakNet.MINIMUM_MTU_SIZE;
 		connectionRequestOne.protocolVersion = RakNet.CLIENT_NETWORK_PROTOCOL;
 		connectionRequestOne.encode();
 
@@ -181,13 +181,13 @@ public class RakNetUtils {
 	/**
 	 * @param address
 	 *            the address of the server.
-	 * @return <code>true</code> if the server is compatible to the current
-	 *         client protocol.
+	 * @return <code>true</code> if the server is compatible to the current client
+	 *         protocol.
 	 */
 	public static boolean isServerCompatible(InetSocketAddress address) {
 		// Create connection packet
 		OpenConnectionRequestOne connectionRequestOne = new OpenConnectionRequestOne();
-		connectionRequestOne.maximumTransferUnit = RakNet.MINIMUM_TRANSFER_UNIT;
+		connectionRequestOne.maximumTransferUnit = RakNet.MINIMUM_MTU_SIZE;
 		connectionRequestOne.protocolVersion = RakNet.CLIENT_NETWORK_PROTOCOL;
 		connectionRequestOne.encode();
 
@@ -215,8 +215,8 @@ public class RakNetUtils {
 	 *            the address of the server.
 	 * @param port
 	 *            the port of the server.
-	 * @return <code>true</code> if the server is compatible to the current
-	 *         client protocol.
+	 * @return <code>true</code> if the server is compatible to the current client
+	 *         protocol.
 	 */
 	public static boolean isServerCompatible(InetAddress address, int port) {
 		return isServerCompatible(new InetSocketAddress(address, port));
@@ -227,8 +227,8 @@ public class RakNetUtils {
 	 *            the address of the server.
 	 * @param port
 	 *            the port of the server.
-	 * @return <code>true</code> if the server is compatible to the current
-	 *         client protocol.
+	 * @return <code>true</code> if the server is compatible to the current client
+	 *         protocol.
 	 * @throws UnknownHostException
 	 *             if the specified address is an unknown host.
 	 */
@@ -296,9 +296,9 @@ public class RakNetUtils {
 		} catch (Throwable throwable) {
 			try {
 				/*
-				 * We failed to get the NetworkInterface, we're gonna have to
-				 * cycle through them manually and choose the lowest one to make
-				 * sure we never exceed any hardware limitations
+				 * We failed to get the NetworkInterface, we're going to have to cycle through
+				 * them manually and choose the lowest one to make sure we never exceed any
+				 * hardware limitations
 				 */
 				boolean foundDevice = false;
 				int lowestMaximumTransferUnit = Integer.MAX_VALUE;
@@ -307,7 +307,7 @@ public class RakNetUtils {
 					NetworkInterface networkInterface = networkInterfaces.nextElement();
 					int maximumTransferUnit = networkInterface.getMTU();
 					if (maximumTransferUnit < lowestMaximumTransferUnit
-							&& maximumTransferUnit >= RakNet.MINIMUM_TRANSFER_UNIT) {
+							&& maximumTransferUnit >= RakNet.MINIMUM_MTU_SIZE) {
 						lowestMaximumTransferUnit = maximumTransferUnit;
 						foundDevice = true;
 					}
@@ -316,7 +316,7 @@ public class RakNetUtils {
 				// This is a serious error and will cause startup to fail
 				if (foundDevice == false) {
 					throw new IOException("Failed to locate a network interface with an MTU higher than the minimum ("
-							+ RakNet.MINIMUM_TRANSFER_UNIT + ")");
+							+ RakNet.MINIMUM_MTU_SIZE + ")");
 				}
 				return lowestMaximumTransferUnit;
 			} catch (Throwable throwable2) {
@@ -336,8 +336,8 @@ public class RakNetUtils {
 	 *            the default port to use if one is not specified.
 	 * @return the parsed <code>InetSocketAddress</code>.
 	 * @throws UnknownHostException
-	 *             if the address is in an invalid format or if the host cannot
-	 *             be found.
+	 *             if the address is in an invalid format or if the host cannot be
+	 *             found.
 	 */
 	public static InetSocketAddress parseAddress(String address, int defaultPort) throws UnknownHostException {
 		String[] addressSplit = address.split(":");
@@ -362,8 +362,8 @@ public class RakNetUtils {
 	 *            the address to convert.
 	 * @return the parsed <code>InetSocketAddress</code>.
 	 * @throws UnknownHostException
-	 *             if the address is in an invalid format or if the host cannot
-	 *             be found.
+	 *             if the address is in an invalid format or if the host cannot be
+	 *             found.
 	 */
 	public static InetSocketAddress parseAddress(String address) throws UnknownHostException {
 		return parseAddress(address, -1);
@@ -471,18 +471,6 @@ public class RakNetUtils {
 	 */
 	public static String toHexStringId(RakNetPacket packet) {
 		return toHexStringId(packet.getId());
-	}
-
-	/**
-	 * Causes a sleep on the main thread using a simple while loop.
-	 * 
-	 * @param time
-	 *            How long the thread will sleep in milliseconds.
-	 */
-	public static void threadLock(long time) {
-		long sleepStart = System.currentTimeMillis();
-		while (System.currentTimeMillis() - sleepStart < time)
-			;
 	}
 
 	/**

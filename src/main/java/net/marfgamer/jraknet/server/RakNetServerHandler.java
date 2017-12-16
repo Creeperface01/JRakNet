@@ -32,12 +32,14 @@ package net.marfgamer.jraknet.server;
 
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.socket.DatagramPacket;
-import net.marfgamer.jraknet.RakNetLogger;
 import net.marfgamer.jraknet.RakNetPacket;
 
 /**
@@ -48,10 +50,12 @@ import net.marfgamer.jraknet.RakNetPacket;
  */
 public class RakNetServerHandler extends ChannelInboundHandlerAdapter {
 
+	private static final Logger log = LoggerFactory.getLogger(RakNetServerHandler.class);
+
 	// Handler data
 	private final String loggerName;
 	private final RakNetServer server;
-	private final HashMap<InetAddress, BlockedAddress> blocked;
+	private final ConcurrentHashMap<InetAddress, BlockedAddress> blocked;
 	private InetSocketAddress causeAddress;
 
 	/**
@@ -64,7 +68,7 @@ public class RakNetServerHandler extends ChannelInboundHandlerAdapter {
 	public RakNetServerHandler(RakNetServer server) {
 		this.loggerName = "server handler #" + server.getGloballyUniqueId();
 		this.server = server;
-		this.blocked = new HashMap<InetAddress, BlockedAddress>();
+		this.blocked = new ConcurrentHashMap<InetAddress, BlockedAddress>();
 	}
 
 	/**
@@ -80,9 +84,11 @@ public class RakNetServerHandler extends ChannelInboundHandlerAdapter {
 	 */
 	public void blockAddress(InetAddress address, String reason, long time) {
 		blocked.put(address, new BlockedAddress(System.currentTimeMillis(), time));
-		server.getListener().onAddressBlocked(address, reason, time);
-		RakNetLogger.info(loggerName,
-				"Blocked address " + address + " due to \"" + reason + "\" for " + time + " milliseconds");
+		for (RakNetServerListener listener : server.getListeners()) {
+			listener.onAddressBlocked(address, reason, time);
+		}
+		log.info(
+				loggerName + "Blocked address " + address + " due to \"" + reason + "\" for " + time + " milliseconds");
 	}
 
 	/**
@@ -93,8 +99,10 @@ public class RakNetServerHandler extends ChannelInboundHandlerAdapter {
 	 */
 	public void unblockAddress(InetAddress address) {
 		blocked.remove(address);
-		server.getListener().onAddressUnblocked(address);
-		RakNetLogger.info(loggerName, "Unblocked address " + address);
+		for (RakNetServerListener listener : server.getListeners()) {
+			listener.onAddressUnblocked(address);
+		}
+		log.info(loggerName + "Unblocked address " + address);
 	}
 
 	/**
@@ -132,10 +140,12 @@ public class RakNetServerHandler extends ChannelInboundHandlerAdapter {
 			// Handle the packet and release the buffer
 			server.handleMessage(packet, sender);
 			datagram.content().readerIndex(0); // Reset position
-			RakNetLogger.debug(loggerName, "Sent packet to server and reset Datagram buffer read position");
-			server.getListener().handleNettyMessage(datagram.content(), sender);
+			log.debug(loggerName + "Sent packet to server and reset Datagram buffer read position");
+			for (RakNetServerListener listener : server.getListeners()) {
+				listener.handleNettyMessage(datagram.content(), sender);
+			}
 			datagram.content().release(); // No longer needed
-			RakNetLogger.debug(loggerName, "Sent Datagram buffer to server and released it");
+			log.debug(loggerName + "Sent Datagram buffer to server and released it");
 
 			// No exceptions occurred, release the suspect
 			this.causeAddress = null;

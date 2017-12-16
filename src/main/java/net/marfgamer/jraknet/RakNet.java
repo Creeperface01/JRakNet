@@ -40,7 +40,8 @@ public class RakNet {
 	// Network protocol data
 	public static final int SERVER_NETWORK_PROTOCOL = 8;
 	public static final int CLIENT_NETWORK_PROTOCOL = 8;
-	public static final int MINIMUM_TRANSFER_UNIT = 548;
+	public static final int MAXIMUM_MTU_SIZE = 1492;
+	public static final int MINIMUM_MTU_SIZE = 400;
 
 	// Session data
 	public static final int MAX_CHANNELS = 32;
@@ -50,11 +51,10 @@ public class RakNet {
 
 	// Configurable options
 	private static long MAX_PACKETS_PER_SECOND = 500;
-	private static boolean USE_LOGGING = false;
 
 	/**
-	 * Returns how many packets can be received in the span of a single second
-	 * (1000 milliseconds) before a session is blocked.
+	 * Returns how many packets can be received in the span of a single second (1000
+	 * milliseconds) before a session is blocked.
 	 * 
 	 * @return how many packets can be received in the span of a single second
 	 *         before a session is blocked.
@@ -64,57 +64,24 @@ public class RakNet {
 	}
 
 	/**
-	 * Sets how many packets can be received in the span of a single second
-	 * (1000 milliseconds) before a session is blocked.
+	 * Sets how many packets can be received in the span of a single second (1000
+	 * milliseconds) before a session is blocked.
 	 * 
 	 * @param maxPacketsPerSecond
-	 *            how many packets can be received in the span of a single
-	 *            second before a session is blocked.
+	 *            how many packets can be received in the span of a single second
+	 *            before a session is blocked.
 	 */
 	public static void setMaxPacketsPerSecond(long maxPacketsPerSecond) {
 		MAX_PACKETS_PER_SECOND = maxPacketsPerSecond;
 	}
 
 	/**
-	 * Removes the max packets per second limit so that no matter how many
-	 * packets a session sends it will never be blocked. This is unrecommended,
-	 * as it can open your server to DOS/DDOS attacks.
+	 * Removes the max packets per second limit so that no matter how many packets a
+	 * session sends it will never be blocked. This is unrecommended, as it can open
+	 * your server to DOS/DDOS attacks.
 	 */
 	public static void setMaxPacketsPerSecondUnlimited() {
 		MAX_PACKETS_PER_SECOND = Long.MAX_VALUE;
-	}
-
-	/**
-	 * @return whether or not if JRakNet should log to the console.
-	 */
-	public static boolean isLoggingEnabled() {
-		return USE_LOGGING;
-	}
-
-	/**
-	 * Enables JRakNet logging.
-	 */
-	public static void enableLogging() {
-		RakNetLogger.setLevel(-1);
-		USE_LOGGING = true;
-	}
-
-	/**
-	 * Enables JRakNet logging with the specified logger level.
-	 * 
-	 * @param level
-	 *            the logger level to use.
-	 */
-	public static void enableLogging(int level) {
-		RakNetLogger.setLevel(level);
-		USE_LOGGING = true;
-	}
-
-	/**
-	 * Disables JRakNet logging.
-	 */
-	public static void disableLogging() {
-		USE_LOGGING = false;
 	}
 
 	// Session timing

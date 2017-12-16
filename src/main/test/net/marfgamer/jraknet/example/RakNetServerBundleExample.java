@@ -30,25 +30,27 @@
  */
 package net.marfgamer.jraknet.example;
 
+import net.marfgamer.jraknet.NoListenerException;
+import net.marfgamer.jraknet.RakNetException;
 import net.marfgamer.jraknet.RakNetPacket;
-import net.marfgamer.jraknet.identifier.MCPEIdentifier;
+import net.marfgamer.jraknet.identifier.MinecraftIdentifier;
 import net.marfgamer.jraknet.server.RakNetServer;
 import net.marfgamer.jraknet.session.RakNetClientSession;
 import net.marfgamer.jraknet.util.RakNetUtils;
 
 /**
  * A simple <code>RakNetServer</code> that is extending
- * <code>RakNetServer</code> and can be tested through a Minecraft: Pocket
- * Edition client using the local multiplayer features built into the game.
+ * <code>RakNetServer</code> and can be tested through a Minecraft client using
+ * the local multiplayer features built into the game.
  *
  * @author Trent "MarfGamer" Summerlin
  */
 public class RakNetServerBundleExample extends RakNetServer {
 
 	public RakNetServerBundleExample() {
-		super(19132, 10, new MCPEIdentifier("JRakNet Example Server", 91, "0.16.2", 0, 10, System.currentTimeMillis(),
-				"New World", "Survival"));
-		this.setListenerSelf();
+		super(19132, 10, new MinecraftIdentifier("JRakNet Example Server", 137, "1.2", 0, 10,
+				System.currentTimeMillis(), "New World", "Survival"));
+		this.addSelfListener();
 	}
 
 	// Client connected
@@ -71,7 +73,7 @@ public class RakNetServerBundleExample extends RakNetServer {
 				+ RakNetUtils.toHexStringId(packet) + " on channel " + channel);
 	}
 
-	public static void main(String[] args) {
+	public static void main(String[] args) throws NoListenerException, RakNetException {
 		// Create server
 		RakNetServerBundleExample bundle = new RakNetServerBundleExample();
 

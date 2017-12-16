@@ -30,14 +30,21 @@
  */
 package net.marfgamer.jraknet.client;
 
-import static net.marfgamer.jraknet.protocol.MessageIdentifier.*;
+import static net.marfgamer.jraknet.protocol.MessageIdentifier.ID_ALREADY_CONNECTED;
+import static net.marfgamer.jraknet.protocol.MessageIdentifier.ID_CONNECTION_BANNED;
+import static net.marfgamer.jraknet.protocol.MessageIdentifier.ID_INCOMPATIBLE_PROTOCOL_VERSION;
+import static net.marfgamer.jraknet.protocol.MessageIdentifier.ID_NO_FREE_INCOMING_CONNECTIONS;
+import static net.marfgamer.jraknet.protocol.MessageIdentifier.ID_OPEN_CONNECTION_REPLY_1;
+import static net.marfgamer.jraknet.protocol.MessageIdentifier.ID_OPEN_CONNECTION_REPLY_2;
 
 import java.net.InetSocketAddress;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.netty.channel.Channel;
 import net.marfgamer.jraknet.RakNet;
 import net.marfgamer.jraknet.RakNetException;
-import net.marfgamer.jraknet.RakNetLogger;
 import net.marfgamer.jraknet.RakNetPacket;
 import net.marfgamer.jraknet.protocol.ConnectionType;
 import net.marfgamer.jraknet.protocol.MessageIdentifier;
@@ -54,6 +61,8 @@ import net.marfgamer.jraknet.session.RakNetServerSession;
  * @author Trent "MarfGamer" Summerlin
  */
 public class SessionPreparation {
+
+	private static final Logger log = LoggerFactory.getLogger(SessionPreparation.class);
 
 	// Preparation data
 	private final String loggerName;
@@ -84,8 +93,7 @@ public class SessionPreparation {
 	}
 
 	/**
-	 * Handles the specified packet and automatically updates the preparation
-	 * data.
+	 * Handles the specified packet and automatically updates the preparation data.
 	 * 
 	 * @param packet
 	 *            the packet to handle.
@@ -98,9 +106,9 @@ public class SessionPreparation {
 
 			if (connectionResponseOne.magic != true) {
 				this.cancelReason = new LoginFailureException(client, "MAGIC failed to validate");
-			} else if (connectionResponseOne.maximumTransferUnit < RakNet.MINIMUM_TRANSFER_UNIT) {
-				this.cancelReason = new LoginFailureException(client,
-						"Maximum transfer unit is is lower than the minimum");
+			} else if (connectionResponseOne.maximumTransferUnit > RakNet.MAXIMUM_MTU_SIZE
+					|| connectionResponseOne.maximumTransferUnit < RakNet.MINIMUM_MTU_SIZE) {
+				this.cancelReason = new LoginFailureException(client, "Invalid maximum transfer unit size");
 			} else if (connectionResponseOne.maximumTransferUnit > this.initialMaximumTransferUnit) {
 				this.cancelReason = new LoginFailureException(client,
 						"Server maximum transfer unit is higher than the client can handle");
@@ -108,7 +116,7 @@ public class SessionPreparation {
 				this.maximumTransferUnit = connectionResponseOne.maximumTransferUnit;
 				this.guid = connectionResponseOne.serverGuid;
 				this.loginPackets[0] = true;
-				RakNetLogger.debug(loggerName, "Applied maximum transfer unit and globally unique ID from "
+				log.debug(loggerName + " Applied maximum transfer unit and globally unique ID from "
 						+ MessageIdentifier.getName(packetId) + " packet");
 			}
 		} else if (packetId == ID_OPEN_CONNECTION_REPLY_2) {
@@ -129,8 +137,8 @@ public class SessionPreparation {
 				this.loginPackets[1] = true;
 				this.maximumTransferUnit = connectionResponseTwo.maximumTransferUnit;
 				this.connectionType = connectionResponseTwo.connectionType;
-				RakNetLogger.debug(loggerName,
-						"Applied maximum transfer unit from " + MessageIdentifier.getName(packetId) + " packet");
+				log.debug(loggerName + "Applied maximum transfer unit from " + MessageIdentifier.getName(packetId)
+						+ " packet");
 			}
 		} else if (packetId == ID_ALREADY_CONNECTED) {
 			this.cancelReason = new AlreadyConnectedException(client);
@@ -189,10 +197,9 @@ public class SessionPreparation {
 		if (!this.readyForSession()) {
 			return null;
 		}
-		RakNetLogger.info(loggerName,
-				"Created server session using globally unique ID " + guid + " and maximum transfer unit with size of "
-						+ maximumTransferUnit + " bytes (" + (maximumTransferUnit * 8) + " bits) for server address "
-						+ address);
+		log.info(loggerName + "Created server session using globally unique ID " + guid
+				+ " and maximum transfer unit with size of " + maximumTransferUnit + " bytes ("
+				+ (maximumTransferUnit * 8) + " bits) for server address " + address);
 		return new RakNetServerSession(this.client, this.connectionType, this.guid, this.maximumTransferUnit, channel,
 				this.address);
 	}

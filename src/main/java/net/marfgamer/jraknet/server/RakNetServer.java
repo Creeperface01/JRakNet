@@ -36,6 +36,10 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
@@ -45,11 +49,11 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.nio.NioDatagramChannel;
-import net.marfgamer.jraknet.NoListenerException;
 import net.marfgamer.jraknet.Packet;
 import net.marfgamer.jraknet.RakNet;
-import net.marfgamer.jraknet.RakNetLogger;
+import net.marfgamer.jraknet.RakNetException;
 import net.marfgamer.jraknet.RakNetPacket;
+import net.marfgamer.jraknet.client.RakNetClient;
 import net.marfgamer.jraknet.identifier.Identifier;
 import net.marfgamer.jraknet.protocol.MessageIdentifier;
 import net.marfgamer.jraknet.protocol.Reliability;
@@ -76,6 +80,8 @@ import net.marfgamer.jraknet.util.RakNetUtils;
  */
 public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 
+	private static final Logger log = LoggerFactory.getLogger(RakNetServer.class);
+
 	// Server data
 	private final long guid;
 	private final long pongId;
@@ -85,6 +91,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	private final int maximumTransferUnit;
 	private boolean broadcastingEnabled;
 	private Identifier identifier;
+	private final ConcurrentLinkedQueue<RakNetServerListener> listeners;
 	private Thread serverThread;
 
 	// Networking data
@@ -94,7 +101,6 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 
 	// Session data
 	private Channel channel;
-	private volatile RakNetServerListener listener;
 	private volatile boolean running;
 	private final ConcurrentHashMap<InetSocketAddress, RakNetClientSession> sessions;
 
@@ -122,6 +128,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 		this.maximumTransferUnit = maximumTransferUnit;
 		this.broadcastingEnabled = true;
 		this.identifier = identifier;
+		this.listeners = new ConcurrentLinkedQueue<RakNetServerListener>();
 
 		// Initiate bootstrap data
 		this.bootstrap = new Bootstrap();
@@ -132,9 +139,9 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 		this.sessions = new ConcurrentHashMap<InetSocketAddress, RakNetClientSession>();
 
 		// Check maximum transfer unit
-		if (this.maximumTransferUnit < RakNet.MINIMUM_TRANSFER_UNIT) {
+		if (this.maximumTransferUnit < RakNet.MINIMUM_MTU_SIZE) {
 			throw new IllegalArgumentException(
-					"Maximum transfer unit can be no smaller than " + RakNet.MINIMUM_TRANSFER_UNIT);
+					"Maximum transfer unit can be no smaller than " + RakNet.MINIMUM_MTU_SIZE);
 		}
 	}
 
@@ -154,8 +161,8 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	}
 
 	/**
-	 * Constructs a <code>RakNetServer</code> with the specified port and
-	 * maximum amount of connections.
+	 * Constructs a <code>RakNetServer</code> with the specified port and maximum
+	 * amount of connections.
 	 *
 	 * @param port
 	 *            the server port.
@@ -232,7 +239,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 */
 	public final void setBroadcastingEnabled(boolean enabled) {
 		this.broadcastingEnabled = enabled;
-		RakNetLogger.info(this, (enabled ? "Enabled" : "Disabled") + " broadcasting");
+		log.info((enabled ? "Enabled" : "Disabled") + " broadcasting");
 	}
 
 	/**
@@ -257,7 +264,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 */
 	public final void setIdentifier(Identifier identifier) {
 		this.identifier = identifier;
-		RakNetLogger.info(this, "Set identifier to \"" + identifier.build() + "\"");
+		log.info("Set identifier to \"" + identifier.build() + "\"");
 	}
 
 	/**
@@ -269,54 +276,89 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	}
 
 	/**
-	 * @return the server's listener.
+	 * @return the server's listeners.
 	 */
-	public final RakNetServerListener getListener() {
-		return this.listener;
+	public final RakNetServerListener[] getListeners() {
+		return listeners.toArray(new RakNetServerListener[listeners.size()]);
 	}
 
 	/**
-	 * Sets the server's listener.
+	 * Adds a listener to the server.
 	 * 
 	 * @param listener
-	 *            the new listener.
+	 *            the listener to add.
 	 * @return the server.
 	 */
-	public final RakNetServer setListener(RakNetServerListener listener) {
+	public final RakNetServer addListener(RakNetServerListener listener) {
+		// Validate listener
 		if (listener == null) {
-			throw new NullPointerException();
+			throw new NullPointerException("Listener must not be null");
 		}
-		this.listener = listener;
-		RakNetLogger.info(this, "Set listener to " + listener.getClass().getName());
+		if (listeners.contains(listener)) {
+			throw new IllegalArgumentException("A listener cannot be added twice");
+		}
+		if (listener instanceof RakNetClient && !listener.equals(this)) {
+			throw new IllegalArgumentException("A server cannot be used as a listener except for itself");
+		}
+
+		// Add listener
+		listeners.add(listener);
+		log.info("Added listener " + listener.getClass().getName());
+
 		return this;
 	}
 
 	/**
-	 * Sets the server's listener to itself, normally used for when a server is
-	 * a bundled server
+	 * Adds the server to it's own set of listeners, used when extending the
+	 * <code>RakNetServer</code> directly.
 	 * 
 	 * @return the server.
 	 */
-	public final RakNetServer setListenerSelf() {
-		return this.setListener(this);
+	public final RakNetServer addSelfListener() {
+		this.addListener(this);
+		return this;
+	}
+
+	/**
+	 * Removes a listener from the server.
+	 * 
+	 * @param listener
+	 *            the listener to remove.
+	 * @return the server.
+	 */
+	public final RakNetServer removeListener(RakNetServerListener listener) {
+		boolean hadListener = listeners.remove(listener);
+		if (hadListener == true) {
+			log.info("Removed listener " + listener.getClass().getName());
+		} else {
+			log.warn("Attempted to removed unregistered listener " + listener.getClass().getName());
+		}
+		return this;
+	}
+
+	/**
+	 * Removes the server from it's own set of listeners, used when extending the
+	 * <code>RakNetServer</code> directly.
+	 * 
+	 * @return the server.
+	 */
+	public final RakNetServer removeSelfListener() {
+		this.removeListener(this);
+		return this;
 	}
 
 	/**
 	 * @return the sessions connected to the server.
 	 */
 	public final RakNetClientSession[] getSessions() {
-		synchronized (sessions) {
-			return sessions.values().toArray(new RakNetClientSession[sessions.size()]);
-		}
+		return sessions.values().toArray(new RakNetClientSession[sessions.size()]);
 	}
 
 	/**
 	 * @return the amount of sessions connected to the server.
 	 */
 	public final int getSessionCount() {
-		synchronized (sessions) {
-			return sessions.size();
-		}
+		return sessions.size();
 	}
 
 	/**
@@ -325,9 +367,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 * @return true server has a session with the specified address.
 	 */
 	public final boolean hasSession(InetSocketAddress address) {
-		synchronized (sessions) {
-			return sessions.containsKey(address);
-		}
+		return sessions.containsKey(address);
 	}
 
 	/**
@@ -337,11 +377,9 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 *         globally unique ID.
 	 */
 	public final boolean hasSession(long guid) {
-		synchronized (sessions) {
-			for (RakNetClientSession session : sessions.values()) {
-				if (session.getGloballyUniqueId() == guid) {
-					return true;
-				}
+		for (RakNetClientSession session : sessions.values()) {
+			if (session.getGloballyUniqueId() == guid) {
+				return true;
 			}
 		}
 		return false;
@@ -353,9 +391,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 * @return a session connected to the server by their address.
 	 */
 	public final RakNetClientSession getSession(InetSocketAddress address) {
-		synchronized (sessions) {
-			return sessions.get(address);
-		}
+		return sessions.get(address);
 	}
 
 	/**
@@ -364,11 +400,9 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 * @return a session connected to the server by their address.
 	 */
 	public final RakNetClientSession getSession(long guid) {
-		synchronized (sessions) {
-			for (RakNetClientSession session : sessions.values()) {
-				if (session.getGloballyUniqueId() == guid) {
-					return session;
-				}
+		for (RakNetClientSession session : sessions.values()) {
+			if (session.getGloballyUniqueId() == guid) {
+				return session;
 			}
 		}
 		return null;
@@ -392,22 +426,24 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 *            the reason the session was removed.
 	 */
 	public final void removeSession(InetSocketAddress address, String reason) {
-		synchronized (sessions) {
-			if (sessions.containsKey(address)) {
-				// Notify client of disconnection
-				RakNetClientSession session = sessions.remove(address);
-				session.sendMessage(Reliability.UNRELIABLE, ID_DISCONNECTION_NOTIFICATION);
+		if (sessions.containsKey(address)) {
+			// Notify client of disconnection
+			RakNetClientSession session = sessions.remove(address);
+			session.sendMessage(Reliability.UNRELIABLE, ID_DISCONNECTION_NOTIFICATION);
 
-				// Notify API
-				RakNetLogger.debug(this, "Removed session with address " + address);
-				if (session.getState() == RakNetState.CONNECTED) {
+			// Notify API
+			log.debug("Removed session with address " + address);
+			if (session.getState() == RakNetState.CONNECTED) {
+				for (RakNetServerListener listener : listeners) {
 					listener.onClientDisconnect(session, reason);
-				} else {
-					listener.onClientPreDisconnect(address, reason);
 				}
 			} else {
-				RakNetLogger.warn(this, "Attempted to remove session that had not been added to the server");
+				for (RakNetServerListener listener : listeners) {
+					listener.onClientPreDisconnect(address, reason);
+				}
 			}
+		} else {
+			log.warn("Attempted to remove session that had not been added to the server");
 		}
 	}
 
@@ -444,8 +480,8 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	}
 
 	/**
-	 * Blocks the address and disconnects all the clients on the address with
-	 * the specified reason for the specified amount of time.
+	 * Blocks the address and disconnects all the clients on the address with the
+	 * specified reason for the specified amount of time.
 	 * 
 	 * @param address
 	 *            the address to block.
@@ -455,11 +491,9 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 *            how long the address will blocked in milliseconds.
 	 */
 	public final void blockAddress(InetAddress address, String reason, long time) {
-		synchronized (sessions) {
-			for (InetSocketAddress clientAddress : sessions.keySet()) {
-				if (clientAddress.getAddress().equals(address)) {
-					this.removeSession(clientAddress, reason);
-				}
+		for (InetSocketAddress clientAddress : sessions.keySet()) {
+			if (clientAddress.getAddress().equals(address)) {
+				this.removeSession(clientAddress, reason);
 			}
 		}
 		handler.blockAddress(address, reason, time);
@@ -512,8 +546,10 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 		}
 
 		// Notify API
-		RakNetLogger.warn(this, "Handled exception " + cause.getClass().getName() + " caused by address " + address);
-		listener.onHandlerException(address, cause);
+		log.warn("Handled exception " + cause.getClass().getName() + " caused by address " + address);
+		for (RakNetServerListener listener : listeners) {
+			listener.onHandlerException(address, cause);
+		}
 	}
 
 	/**
@@ -532,32 +568,30 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 			ping.decode();
 
 			// Make sure parameters match and that broadcasting is enabled
-			synchronized (sessions) {
-				if ((packetId == ID_UNCONNECTED_PING || sessions.size() < this.maxConnections)
-						&& this.broadcastingEnabled == true) {
-					ServerPing pingEvent = new ServerPing(sender, identifier, ping.connectionType);
+			if ((packetId == ID_UNCONNECTED_PING || (sessions.size() < this.maxConnections || this.maxConnections < 0))
+					&& this.broadcastingEnabled == true) {
+				ServerPing pingEvent = new ServerPing(sender, identifier, ping.connectionType);
+				for (RakNetServerListener listener : listeners) {
 					listener.handlePing(pingEvent);
+				}
 
-					if (ping.magic == true && pingEvent.getIdentifier() != null) {
-						UnconnectedPong pong = new UnconnectedPong();
-						pong.timestamp = ping.timestamp;
-						pong.pongId = this.pongId;
-						pong.identifier = pingEvent.getIdentifier();
+				if (ping.magic == true && pingEvent.getIdentifier() != null) {
+					UnconnectedPong pong = new UnconnectedPong();
+					pong.timestamp = ping.timestamp;
+					pong.pongId = this.pongId;
+					pong.identifier = pingEvent.getIdentifier();
 
-						pong.encode();
-						this.sendNettyMessage(pong, sender);
-					}
+					pong.encode();
+					this.sendNettyMessage(pong, sender);
 				}
 			}
 		} else if (packetId == ID_OPEN_CONNECTION_REQUEST_1) {
 			OpenConnectionRequestOne connectionRequestOne = new OpenConnectionRequestOne(packet);
 			connectionRequestOne.decode();
 
-			synchronized (sessions) {
-				if (sessions.containsKey(sender)) {
-					if (sessions.get(sender).getState().equals(RakNetState.CONNECTED)) {
-						this.removeSession(sender, "Client re-instantiated connection");
-					}
+			if (sessions.containsKey(sender)) {
+				if (sessions.get(sender).getState().equals(RakNetState.CONNECTED)) {
+					this.removeSession(sender, "Client re-instantiated connection");
 				}
 			}
 
@@ -610,16 +644,16 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 
 							if (!connectionResponseTwo.failed()) {
 								// Call event
-								this.getListener().onClientPreConnect(sender);
+								for (RakNetServerListener listener : listeners) {
+									listener.onClientPreConnect(sender);
+								}
 
 								// Create session
-								synchronized (sessions) {
-									RakNetClientSession clientSession = new RakNetClientSession(this,
-											System.currentTimeMillis(), connectionRequestTwo.connectionType,
-											connectionRequestTwo.clientGuid, connectionRequestTwo.maximumTransferUnit,
-											channel, sender);
-									sessions.put(sender, clientSession);
-								}
+								RakNetClientSession clientSession = new RakNetClientSession(this,
+										System.currentTimeMillis(), connectionRequestTwo.connectionType,
+										connectionRequestTwo.clientGuid, connectionRequestTwo.maximumTransferUnit,
+										channel, sender);
+								sessions.put(sender, clientSession);
 
 								// Send response, we are ready for login
 								this.sendNettyMessage(connectionResponseTwo, sender);
@@ -631,32 +665,28 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 				}
 			}
 		} else if (packetId >= ID_CUSTOM_0 && packetId <= ID_CUSTOM_F) {
-			synchronized (sessions) {
-				if (sessions.containsKey(sender)) {
-					CustomPacket custom = new CustomPacket(packet);
-					custom.decode();
+			if (sessions.containsKey(sender)) {
+				CustomPacket custom = new CustomPacket(packet);
+				custom.decode();
 
-					RakNetClientSession session = sessions.get(sender);
-					session.handleCustom(custom);
-				}
+				RakNetClientSession session = sessions.get(sender);
+				session.handleCustom(custom);
 			}
 		} else if (packetId == Acknowledge.ACKNOWLEDGED || packetId == Acknowledge.NOT_ACKNOWLEDGED) {
-			synchronized (sessions) {
-				if (sessions.containsKey(sender)) {
-					Acknowledge acknowledge = new Acknowledge(packet);
-					acknowledge.decode();
+			if (sessions.containsKey(sender)) {
+				Acknowledge acknowledge = new Acknowledge(packet);
+				acknowledge.decode();
 
-					RakNetClientSession session = sessions.get(sender);
-					session.handleAcknowledge(acknowledge);
-				}
+				RakNetClientSession session = sessions.get(sender);
+				session.handleAcknowledge(acknowledge);
 			}
 		}
 
 		if (MessageIdentifier.hasPacket(packet.getId())) {
-			RakNetLogger.debug(this, "Handled internal packet with ID " + MessageIdentifier.getName(packet.getId())
-					+ " (" + packet.getId() + ")");
+			log.debug("Handled internal packet with ID " + MessageIdentifier.getName(packet.getId()) + " ("
+					+ packet.getId() + ")");
 		} else {
-			RakNetLogger.debug(this, "Sent packet with ID " + packet.getId() + " to session handler");
+			log.debug("Sent packet with ID " + packet.getId() + " to session handler");
 		}
 	}
 
@@ -671,7 +701,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 		// Checked throughout all login
 		if (this.hasSession(sender)) {
 			return new RakNetPacket(ID_ALREADY_CONNECTED);
-		} else if (this.getSessionCount() >= this.maxConnections) {
+		} else if (this.getSessionCount() >= this.maxConnections && this.maxConnections >= 0) {
 			// We have no free connections
 			return new RakNetPacket(ID_NO_FREE_INCOMING_CONNECTIONS);
 		} else if (this.addressBlocked(sender.getAddress())) {
@@ -689,8 +719,8 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	/**
 	 * Sends a raw message to the specified address. Be careful when using this
 	 * method, because if it is used incorrectly it could break server sessions
-	 * entirely! If you are wanting to send a message to a session, you are
-	 * probably looking for the
+	 * entirely! If you are wanting to send a message to a session, you are probably
+	 * looking for the
 	 * {@link net.marfgamer.jraknet.session.RakNetSession#sendMessage(net.marfgamer.jraknet.protocol.Reliability, net.marfgamer.jraknet.Packet)
 	 * sendMessage} method.
 	 * 
@@ -701,15 +731,15 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 */
 	public final void sendNettyMessage(ByteBuf buf, InetSocketAddress address) {
 		channel.writeAndFlush(new DatagramPacket(buf, address));
-		RakNetLogger.debug(this, "Sent netty message with size of " + buf.capacity() + " bytes (" + (buf.capacity() * 8)
-				+ ") to " + address);
+		log.debug("Sent netty message with size of " + buf.capacity() + " bytes (" + (buf.capacity() * 8) + ") to "
+				+ address);
 	}
 
 	/**
 	 * Sends a raw message to the specified address. Be careful when using this
 	 * method, because if it is used incorrectly it could break server sessions
-	 * entirely! If you are wanting to send a message to a session, you are
-	 * probably looking for the
+	 * entirely! If you are wanting to send a message to a session, you are probably
+	 * looking for the
 	 * {@link net.marfgamer.jraknet.session.RakNetSession#sendMessage(net.marfgamer.jraknet.protocol.Reliability, net.marfgamer.jraknet.Packet)
 	 * sendMessage} method.
 	 * 
@@ -725,8 +755,8 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	/**
 	 * Sends a raw message to the specified address. Be careful when using this
 	 * method, because if it is used incorrectly it could break server sessions
-	 * entirely! If you are wanting to send a message to a session, you are
-	 * probably looking for the
+	 * entirely! If you are wanting to send a message to a session, you are probably
+	 * looking for the
 	 * {@link net.marfgamer.jraknet.session.RakNetSession#sendMessage(net.marfgamer.jraknet.protocol.Reliability, int)
 	 * sendMessage} method.
 	 * 
@@ -742,13 +772,13 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	/**
 	 * Starts the server.
 	 * 
-	 * @throws NoListenerException
-	 *             if the listener has not yet been set.
+	 * @throws RakNetException
+	 *             if an error occurs during startup.
 	 */
-	public final void start() throws NoListenerException {
-		// Make sure we have an adapter
-		if (listener == null) {
-			throw new NoListenerException();
+	public final void start() throws RakNetException {
+		// Make sure we have a listener
+		if (listeners.size() <= 0) {
+			log.warn("Server has no listeners");
 		}
 
 		// Create bootstrap and bind the channel
@@ -757,22 +787,20 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 			bootstrap.option(ChannelOption.SO_BROADCAST, true).option(ChannelOption.SO_REUSEADDR, false);
 			this.channel = bootstrap.bind(port).sync().channel();
 			this.running = true;
-			RakNetLogger.debug(this, "Created and bound bootstrap");
-		} catch (InterruptedException e) {
-			e.printStackTrace();
-			this.running = false;
-		}
+			log.debug("Created and bound bootstrap");
 
-		// Notify API
-		RakNetLogger.info(this, "Started server");
-		listener.onServerStart();
-
-		// Update system
-		while (this.running == true) {
-			if (sessions.size() <= 0) {
-				continue; // Do not loop through non-existent sessions
+			// Notify API
+			log.info("Started server");
+			for (RakNetServerListener listener : listeners) {
+				listener.onServerStart();
 			}
-			synchronized (sessions) {
+
+			// Update system
+			while (this.running == true) {
+				Thread.sleep(0, 1); // Lower CPU usage
+				if (sessions.size() <= 0) {
+					continue; // Do not loop through non-existent sessions
+				}
 				for (RakNetClientSession session : sessions.values()) {
 					try {
 						// Update session and make sure it isn't DOSing us
@@ -782,12 +810,17 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 									RakNet.MAX_PACKETS_PER_SECOND_BLOCK);
 						}
 					} catch (Throwable throwable) {
-						// An error related to the session occurred, remove it
-						listener.onSessionException(session, throwable);
+						// An error related to the session occurred
+						for (RakNetServerListener listener : listeners) {
+							listener.onSessionException(session, throwable);
+						}
 						this.removeSession(session, throwable.getMessage());
 					}
 				}
 			}
+		} catch (InterruptedException e) {
+			this.running = false;
+			throw new RakNetException(e);
 		}
 	}
 
@@ -796,19 +829,21 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 	 * 
 	 * @return the <code>Thread</code> the server is running on.
 	 */
-	public final synchronized Thread startThreaded() {
+	public final Thread startThreaded() {
 		// Give the thread a reference
 		RakNetServer server = this;
 
 		// Create thread and start it
 		Thread thread = new Thread() {
 			@Override
-			public synchronized void run() {
+			public void run() {
 				try {
 					server.start();
 				} catch (Throwable throwable) {
-					if (server.getListener() != null) {
-						server.getListener().onThreadException(throwable);
+					if (server.getListeners().length > 0) {
+						for (RakNetServerListener listener : server.getListeners()) {
+							listener.onThreadException(throwable);
+						}
 					} else {
 						throwable.printStackTrace();
 					}
@@ -818,7 +853,7 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 		thread.setName("JRAKNET_SERVER_" + server.getGloballyUniqueId());
 		thread.start();
 		this.serverThread = thread;
-		RakNetLogger.info(this, "Started on thread with name " + thread.getName());
+		log.info("Started on thread with name " + thread.getName());
 
 		// Return the thread so it can be modified
 		return thread;
@@ -835,12 +870,10 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 		this.running = false;
 
 		// Disconnect sessions
-		synchronized (sessions) {
-			for (RakNetClientSession session : sessions.values()) {
-				this.removeSession(session, reason);
-			}
-			sessions.clear();
+		for (RakNetClientSession session : sessions.values()) {
+			this.removeSession(session, reason);
 		}
+		sessions.clear();
 
 		// Interrupt it's thread if it owns one
 		if (this.serverThread != null) {
@@ -848,8 +881,10 @@ public class RakNetServer implements GeminusRakNetPeer, RakNetServerListener {
 		}
 
 		// Notify API
-		RakNetLogger.info(this, "Shutdown server");
-		listener.onServerShutdown();
+		log.info("Shutdown server");
+		for (RakNetServerListener listener : listeners) {
+			listener.onServerShutdown();
+		}
 	}
 
 	/**

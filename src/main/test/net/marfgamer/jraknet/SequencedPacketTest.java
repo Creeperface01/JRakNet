@@ -35,6 +35,9 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.marfgamer.jraknet.client.RakNetClient;
 import net.marfgamer.jraknet.client.RakNetClientListener;
 import net.marfgamer.jraknet.protocol.Reliability;
@@ -43,7 +46,6 @@ import net.marfgamer.jraknet.server.RakNetServer;
 import net.marfgamer.jraknet.server.RakNetServerListener;
 import net.marfgamer.jraknet.session.RakNetClientSession;
 import net.marfgamer.jraknet.session.RakNetServerSession;
-import net.marfgamer.jraknet.util.RakNetUtils;
 
 /**
  * Used to test the sequenced packet feature of <code>RakNetSession</code>
@@ -62,6 +64,8 @@ import net.marfgamer.jraknet.util.RakNetUtils;
  */
 public class SequencedPacketTest {
 
+	private static final Logger log = LoggerFactory.getLogger(SequencedPacketTest.class);
+
 	// Logger name
 	private static final String LOGGER_NAME = "sequenced packet test";
 
@@ -72,30 +76,28 @@ public class SequencedPacketTest {
 	private static int packetReceiveCount = 0;
 	private static boolean[] packetsReceived = new boolean[PACKET_SEND_COUNT];
 
-	public static void main(String[] args) throws RakNetException, UnknownHostException {
-		// Enable logging
-		RakNet.enableLogging(RakNetLogger.LEVEL_INFO);
+	public static void main(String[] args) throws RakNetException, InterruptedException, UnknownHostException {
 
-		RakNetLogger.info(LOGGER_NAME, "Creating server...");
+		log.info("Creating server...");
 		createServer();
 
-		RakNetLogger.info(LOGGER_NAME, "Sleeping 3000MS");
-		RakNetUtils.threadLock(3000L);
+		log.info("Sleeping 3000MS");
+		Thread.sleep(3000L);
 
-		RakNetLogger.info(LOGGER_NAME, "Creating client...");
+		log.info("Creating client...");
 		createClient();
 
 		// In case of timeout
 		long currentTime = System.currentTimeMillis();
 		while (true) {
-			if (currentTime - startSend >= 5000 && startSend > -1) {
-				RakNetLogger.error(LOGGER_NAME,
+			Thread.sleep(0, 1); // Lower CPU usage
+			if (currentTime - startSend >= 30000 && startSend > -1) {
+				log.error(LOGGER_NAME,
 						"Failed to complete test due to timeout (Took over 30 seconds!), printing results...");
 				printResults();
 				System.exit(1);
-			} else {
-				currentTime = System.currentTimeMillis();
 			}
+			currentTime = System.currentTimeMillis();
 		}
 	}
 
@@ -103,14 +105,12 @@ public class SequencedPacketTest {
 	 * Prints the results of the test
 	 */
 	private static void printResults() {
-		RakNetLogger
-				.info(LOGGER_NAME,
-						"Server - Sequenced packet test finished, lost "
-								+ (packetReceiveCount >= PACKET_SEND_COUNT ? "no"
-										: Float.toString(((float) PACKET_SEND_COUNT
-												- packetReceiveCount / (float) PACKET_SEND_COUNT) * 100).substring(0, 3)
-												.replace(".", "") + "% of")
-								+ " packets (Took " + (System.currentTimeMillis() - startSend) + "MS)");
+		log.info(LOGGER_NAME, "Server - Sequenced packet test finished, lost "
+				+ (packetReceiveCount >= PACKET_SEND_COUNT ? "no"
+						: Float.toString(
+								((float) PACKET_SEND_COUNT - packetReceiveCount / (float) PACKET_SEND_COUNT) * 100)
+								.substring(0, 3).replace(".", "") + "% of")
+				+ " packets (Took " + (System.currentTimeMillis() - startSend) + "MS)");
 		if (packetReceiveCount < PACKET_SEND_COUNT) {
 			// Create list of lost packets
 			ArrayList<Integer> packetsLost = new ArrayList<Integer>();
@@ -126,8 +126,7 @@ public class SequencedPacketTest {
 				Integer wi = packetsLost.get(i);
 				builder.append(wi.intValue() + (i + 1 < packetsLost.size() ? ", " : ""));
 			}
-			RakNetLogger.info(LOGGER_NAME,
-					"Packet" + (packetsLost.size() == 1 ? "" : "s") + " lost: " + builder.toString());
+			log.info(LOGGER_NAME, "Packet" + (packetsLost.size() == 1 ? "" : "s") + " lost: " + builder.toString());
 		}
 	}
 
@@ -139,8 +138,8 @@ public class SequencedPacketTest {
 	private static RakNetServer createServer() throws RakNetException {
 		RakNetServer server = new RakNetServer(UtilityTest.MARFGAMER_DEVELOPMENT_PORT, 1);
 
-		// Client connected
-		server.setListener(new RakNetServerListener() {
+		// Add listener
+		server.addListener(new RakNetServerListener() {
 
 			@Override
 			public void onClientConnect(RakNetClientSession session) {
@@ -155,12 +154,12 @@ public class SequencedPacketTest {
 					e.printStackTrace();
 				}
 
-				RakNetLogger.info(LOGGER_NAME, "Server - Client connected from " + session.getAddress() + "!");
+				log.info("Server - Client connected from " + session.getAddress() + "!");
 			}
 
 			@Override
 			public void onClientDisconnect(RakNetClientSession session, String reason) {
-				RakNetLogger.info(LOGGER_NAME,
+				log.info(LOGGER_NAME,
 						"Server - Client from " + session.getAddress() + " disconnected! (" + reason + ")");
 				System.exit(1);
 			}
@@ -202,18 +201,17 @@ public class SequencedPacketTest {
 		// Create client and add hooks
 		RakNetClient client = new RakNetClient();
 
-		// Server connected
-		client.setListener(new RakNetClientListener() {
+		// Add listener
+		client.addListener(new RakNetClientListener() {
 
 			int packetSize;
 
 			@Override
 			public void onConnect(RakNetServerSession session) {
-				RakNetLogger.info(LOGGER_NAME,
-						"Client - Connected to server with MTU " + session.getMaximumTransferUnit());
+				log.info(LOGGER_NAME, "Client - Connected to server with MTU " + session.getMaximumTransferUnit());
 
 				// Send 100 sequenced packets
-				RakNetLogger.info(LOGGER_NAME, "Client - Sending " + PACKET_SEND_COUNT + " packets...");
+				log.info("Client - Sending " + PACKET_SEND_COUNT + " packets...");
 				startSend = System.currentTimeMillis();
 				for (int i = 0; i < PACKET_SEND_COUNT; i++) {
 					RakNetPacket sequencedPacket = new RakNetPacket(SEQUENCE_START_ID);
@@ -223,13 +221,13 @@ public class SequencedPacketTest {
 				}
 
 				// Notify user
-				RakNetLogger.info(LOGGER_NAME, "Client - Sent " + PACKET_SEND_COUNT + " packets (" + packetSize
-						+ " bytes, " + (packetSize / 4) + " ints)");
+				log.info("Client - Sent " + PACKET_SEND_COUNT + " packets (" + packetSize + " bytes, "
+						+ (packetSize / 4) + " ints)");
 			}
 
 			@Override
 			public void onDisconnect(RakNetServerSession session, String reason) {
-				RakNetLogger.error(LOGGER_NAME, "Client - Lost connection to server! (" + reason + ")");
+				log.error("Client - Lost connection to server! (" + reason + ")");
 				System.exit(1);
 			}
 

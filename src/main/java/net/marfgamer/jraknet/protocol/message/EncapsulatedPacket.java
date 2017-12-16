@@ -30,9 +30,11 @@
  */
 package net.marfgamer.jraknet.protocol.message;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.netty.buffer.Unpooled;
 import net.marfgamer.jraknet.Packet;
-import net.marfgamer.jraknet.RakNetLogger;
 import net.marfgamer.jraknet.protocol.Reliability;
 import net.marfgamer.jraknet.protocol.message.acknowledge.Record;
 
@@ -44,8 +46,7 @@ import net.marfgamer.jraknet.protocol.message.acknowledge.Record;
  */
 public class EncapsulatedPacket implements Sizable, Cloneable {
 
-	// Logger name
-	private static final String LOGGER_NAME = "encapsulated packet";
+	private static final Logger log = LoggerFactory.getLogger(EncapsulatedPacket.class);
 
 	// Length constants
 	public static final int MINIMUM_BUFFER_LENGTH = 3;
@@ -70,19 +71,18 @@ public class EncapsulatedPacket implements Sizable, Cloneable {
 
 	/**
 	 * If the reliability requires an ACK receipt (The name ends with
-	 * <code>_WITH_ACK_RECEIPT</code>) then this can be used to determine if
-	 * this is the packet that was received or lost once you are notified
-	 * through <code>onAcknowledge()</code> or
-	 * <code>onNotAcknowledge()</code>.<br>
+	 * <code>_WITH_ACK_RECEIPT</code>) then this can be used to determine if this is
+	 * the packet that was received or lost once you are notified through
+	 * <code>onAcknowledge()</code> or <code>onNotAcknowledge()</code>.<br>
 	 * <br>
 	 * This will <i>always</i> be <code>null</code> before and after the two
-	 * notifier methods stated above are called. This is due to the fact that
-	 * the ACK record for an encapsulated packet can change as the custom packet
-	 * that sends it might not ever arrive, causing it to be resent in another
-	 * custom packet with another sequence ID (ACK record), causing it to be
-	 * changed. Because of this, it is recommended to only read data from the
-	 * packet when either the <code>onAcknowledge()</code> or
-	 * <code>onNotAcknowledge()</code> methods are called.
+	 * notifier methods stated above are called. This is due to the fact that the
+	 * ACK record for an encapsulated packet can change as the custom packet that
+	 * sends it might not ever arrive, causing it to be resent in another custom
+	 * packet with another sequence ID (ACK record), causing it to be changed.
+	 * Because of this, it is recommended to only read data from the packet when
+	 * either the <code>onAcknowledge()</code> or <code>onNotAcknowledge()</code>
+	 * methods are called.
 	 */
 	public Record ackRecord = null;
 
@@ -112,8 +112,7 @@ public class EncapsulatedPacket implements Sizable, Cloneable {
 		buffer.writeUnsignedShort(payload.size() * 8); // Size is in bits
 
 		if (reliability.requiresAck() && ackRecord == null) {
-			RakNetLogger.error(LOGGER_NAME,
-					"No ACK record ID set for encapsulated packet with reliability " + reliability);
+			log.error("No ACK record ID set for encapsulated packet with reliability " + reliability);
 		}
 
 		if (reliability.isReliable()) {
@@ -210,9 +209,9 @@ public class EncapsulatedPacket implements Sizable, Cloneable {
 	 *            whether or not the packet is split.
 	 * @param payload
 	 *            the payload of the packet
-	 * @return the size of an <code>EncapsulatedPacket</code> based on the
-	 *         specified reliability, whether or not it is split, and the size
-	 *         of the specified payload without any extra data written to it.
+	 * @return the size of an <code>EncapsulatedPacket</code> based on the specified
+	 *         reliability, whether or not it is split, and the size of the
+	 *         specified payload without any extra data written to it.
 	 */
 	public static int calculateDummy(Reliability reliability, boolean split, Packet payload) {
 		EncapsulatedPacket dummy = new EncapsulatedPacket();
@@ -229,9 +228,9 @@ public class EncapsulatedPacket implements Sizable, Cloneable {
 	 *            the reliability of the packet.
 	 * @param split
 	 *            whether or not the packet is split.
-	 * @return the size of an <code>EncapsulatedPacket</code> based on the
-	 *         specified reliability and whether or not it is split without any
-	 *         extra data written to it.
+	 * @return the size of an <code>EncapsulatedPacket</code> based on the specified
+	 *         reliability and whether or not it is split without any extra data
+	 *         written to it.
 	 */
 	public static int calculateDummy(Reliability reliability, boolean split) {
 		return EncapsulatedPacket.calculateDummy(reliability, split, new Packet());

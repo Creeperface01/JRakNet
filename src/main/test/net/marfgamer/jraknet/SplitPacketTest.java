@@ -34,6 +34,9 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import net.marfgamer.jraknet.client.RakNetClient;
 import net.marfgamer.jraknet.client.RakNetClientListener;
 import net.marfgamer.jraknet.protocol.Reliability;
@@ -44,7 +47,6 @@ import net.marfgamer.jraknet.server.RakNetServer;
 import net.marfgamer.jraknet.server.RakNetServerListener;
 import net.marfgamer.jraknet.session.RakNetClientSession;
 import net.marfgamer.jraknet.session.RakNetServerSession;
-import net.marfgamer.jraknet.util.RakNetUtils;
 
 /**
  * Used to test the split packet feature of <code>RakNetSession</code> through a
@@ -55,25 +57,22 @@ import net.marfgamer.jraknet.util.RakNetUtils;
  */
 public class SplitPacketTest {
 
-	// Logger name
-	private static final String LOGGER_NAME = "split packet test";
+	private static final Logger log = LoggerFactory.getLogger(SplitPacketTest.class);
 
 	// Test data
 	private static final short SPLIT_START_ID = 0xFE;
 	private static final short SPLIT_END_ID = 0xFF;
 	private static long startSend = -1;
 
-	public static void main(String[] args) throws RakNetException, UnknownHostException {
-		// Enable logging
-		RakNet.enableLogging(RakNetLogger.LEVEL_INFO);
+	public static void main(String[] args) throws RakNetException, InterruptedException, UnknownHostException {
 
-		RakNetLogger.info(LOGGER_NAME, "Creating server...");
+		log.info("Creating server...");
 		createServer();
 
-		RakNetLogger.info(LOGGER_NAME, "Sleeping 3000MS");
-		RakNetUtils.threadLock(3000L);
+		log.info("Sleeping 3000MS");
+		Thread.sleep(3000L);
 
-		RakNetLogger.info(LOGGER_NAME, "Creating client...");
+		log.info("Creating client...");
 		createClient();
 	}
 
@@ -85,8 +84,8 @@ public class SplitPacketTest {
 	private static RakNetServer createServer() throws RakNetException {
 		RakNetServer server = new RakNetServer(UtilityTest.MARFGAMER_DEVELOPMENT_PORT, 1);
 
-		// Client connected
-		server.setListener(new RakNetServerListener() {
+		// Add listener
+		server.addListener(new RakNetServerListener() {
 
 			@Override
 			public void onClientConnect(RakNetClientSession session) {
@@ -101,36 +100,35 @@ public class SplitPacketTest {
 					e.printStackTrace();
 				}
 
-				RakNetLogger.info(LOGGER_NAME, "Server: Client connected from " + session.getAddress() + "!");
+				log.info("Server: Client connected from " + session.getAddress() + "!");
 			}
 
 			@Override
 			public void onClientDisconnect(RakNetClientSession session, String reason) {
-				RakNetLogger.info(LOGGER_NAME,
-						"Server: Client from " + session.getAddress() + " disconnected! (" + reason + ")");
+				log.info("Server: Client from " + session.getAddress() + " disconnected! (" + reason + ")");
 				System.exit(1);
 			}
 
 			@Override
 			public void handleMessage(RakNetClientSession session, RakNetPacket packet, int channel) {
-				RakNetLogger.info(LOGGER_NAME, "Server: Received packet of " + packet.size() + " bytes from "
-						+ session.getAddress() + ", checking data...");
+				log.info("Server: Received packet of " + packet.size() + " bytes from " + session.getAddress()
+						+ ", checking data...");
 
 				// Check packet ID
-				RakNetLogger.info(LOGGER_NAME, "Server: Checking header byte...");
+				log.info("Server: Checking header byte...");
 				if (packet.getId() != SPLIT_START_ID) {
-					RakNetLogger.error(LOGGER_NAME, "Server: Packet header is " + packet.getId() + " when it should be "
-							+ SPLIT_START_ID + "!");
+					log.error("Server: Packet header is " + packet.getId() + " when it should be " + SPLIT_START_ID
+							+ "!");
 					System.exit(1);
 				}
 
 				// Check shorts
-				RakNetLogger.info(LOGGER_NAME, "Server: Checking if data is sequenced correctly...");
+				log.info("Server: Checking if data is sequenced correctly...");
 				long lastInt = -1;
 				while (packet.remaining() >= 4) {
 					long currentInt = packet.readUnsignedInt();
 					if (currentInt - lastInt != 1) {
-						RakNetLogger.error(LOGGER_NAME, "Server: Short data was not split correctly!");
+						log.error("Server: Short data was not split correctly!");
 						System.exit(1);
 					} else {
 						lastInt = currentInt;
@@ -138,15 +136,14 @@ public class SplitPacketTest {
 				}
 
 				// Check packet footer
-				RakNetLogger.info(LOGGER_NAME, "Server: Checking footer byte...");
+				log.info("Server: Checking footer byte...");
 				if (packet.readUnsignedByte() != SPLIT_END_ID) {
-					RakNetLogger.error(LOGGER_NAME, "Server: Packet footer is " + packet.getId() + " when it should be "
-							+ SPLIT_START_ID + "!");
+					log.error("Server: Packet footer is " + packet.getId() + " when it should be " + SPLIT_START_ID
+							+ "!");
 					System.exit(1);
 				}
 
-				RakNetLogger.info(LOGGER_NAME,
-						"Server: Split packet test passed! (Took " + (System.currentTimeMillis() - startSend) + "MS)");
+				log.info("Server: Split packet test passed! (Took " + (System.currentTimeMillis() - startSend) + "MS)");
 				System.exit(0);
 			}
 
@@ -173,15 +170,14 @@ public class SplitPacketTest {
 		// Create client and add hooks
 		RakNetClient client = new RakNetClient();
 
-		// Server connected
-		client.setListener(new RakNetClientListener() {
+		// Add listener
+		client.addListener(new RakNetClientListener() {
 
 			private Packet packet;
 
 			@Override
 			public void onConnect(RakNetServerSession session) {
-				RakNetLogger.info(LOGGER_NAME,
-						"Client: Connected to server with MTU " + session.getMaximumTransferUnit());
+				log.info("Client: Connected to server with MTU " + session.getMaximumTransferUnit());
 
 				// Calculate maximum packet size
 				this.packet = new RakNetPacket(SPLIT_START_ID);
@@ -198,15 +194,14 @@ public class SplitPacketTest {
 				packet.writeUnsignedByte(SPLIT_END_ID);
 
 				// Send packet
-				RakNetLogger.info(LOGGER_NAME,
-						"Client: Sending giant packet... (" + packet.size() + " bytes, " + integersWritten + " ints)");
+				log.info("Client: Sending giant packet... (" + packet.size() + " bytes, " + integersWritten + " ints)");
 				startSend = System.currentTimeMillis();
 				session.sendMessage(Reliability.RELIABLE_ORDERED, packet);
 			}
 
 			@Override
 			public void onDisconnect(RakNetServerSession session, String reason) {
-				RakNetLogger.error(LOGGER_NAME, "Client: Lost connection to server! (" + reason + ")");
+				log.error("Client: Lost connection to server! (" + reason + ")");
 				System.exit(1);
 			}
 
